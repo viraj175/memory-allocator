@@ -2,8 +2,7 @@
 #define MALLOC_H
 
 #include <stddef.h>
-#define POOL_SIZE 8 * 1024
-#define FREE_LIST_SIZE 50
+#define MIN_RESERVED_BLOCK_SPACE 8
 
 typedef struct block {
     size_t size;
@@ -20,5 +19,3 @@ void *my_realloc(void *ptr, size_t bytes);
 void heap_print(void);
 
 #endif // !MALLOC_H
-
-
