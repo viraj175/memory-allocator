@@ -1,4 +1,5 @@
 #include "malloc.h"
+#include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -22,7 +23,7 @@ static block_t
     }
     printf("size: %lu\n", size);
 
-    sbrk(0);
+    // sbrk(0);
     void *request = sbrk(size);
 
     if (request == (void *)-1)
@@ -41,7 +42,7 @@ static block_t
     // printf("we are inside find_free()\n");
     while (current != NULL)
     {
-        if(current->free && current->size >= size + sizeof(block_t) + MIN_RESERVED_BLOCK_SPACE)
+        if(current->free && current->size >= size + MIN_RESERVED_BLOCK_SPACE)
             return current;
         *last = current;
         current = current->next;
@@ -54,12 +55,13 @@ static block_t
 static int
 split_block(block_t *block, size_t size)
 {
-    // if (block->size < size + sizeof(block_t) + MIN_RESERVED_BLOCK_SPACE)
-    // {
-    //     fprintf(stderr, "can't split block, not enough space left!\n");
-    //     return -1;
-    // }
-    //
+    printf("block->size: %lu = %lu + %lu\n", block->size, size, MIN_RESERVED_BLOCK_SPACE);
+    if (block->size < size + MIN_RESERVED_BLOCK_SPACE)
+    {
+        fprintf(stderr, "can't split block, not enough space left!\n");
+        return -1;
+    }
+
     block_t *next_block = block->next;
     block_t *new_next_block = (block_t *)((char *)block + sizeof(block_t) + size);
     new_next_block->size = block->size - size - sizeof(block_t);
@@ -80,7 +82,7 @@ split_block(block_t *block, size_t size)
 void
 *my_malloc(size_t bytes)
 {
-    if (bytes <= 0)
+    if (bytes == 0)
     {
         fprintf(stderr, "No size provided!\n");
         return NULL;
@@ -119,13 +121,58 @@ void
 void
 *my_calloc(size_t n, size_t bytes)
 {
-    return NULL;
+    if (!n || !bytes)
+    {
+        fprintf(stderr, "invalid size!\n");
+        return NULL;
+    }
+
+    if (bytes > SIZE_MAX / n)
+    {
+        fprintf(stderr, "overflow!\n");
+        return NULL;
+    }
+
+    void *ptr = my_malloc(n * bytes);
+    memset(ptr, 0, n * bytes);
+    return ptr;
 }
 
 void
 *my_realloc(void *ptr, size_t bytes)
 {
-    return NULL;
+    if (!ptr)
+    {
+        fprintf(stderr, "can't reallocate invalid memory!\n");
+        return NULL;
+    }
+    if (bytes == 0)
+    {
+        my_free(ptr);
+        return NULL;
+    }
+
+    bytes = align_size(bytes);
+    block_t *block = (block_t *)((char *)ptr - sizeof(block_t));
+
+    if (bytes == block->size)
+        return ptr;
+
+    if (block->size > MIN_RESERVED_BLOCK_SPACE && bytes < block->size - MIN_RESERVED_BLOCK_SPACE)
+    {
+        printf("bytes: %lu = %lu - %lu\n", bytes, block->size, MIN_RESERVED_BLOCK_SPACE);
+        split_block(block, bytes);
+        return ptr;
+    }
+    
+    if (bytes < block->size)
+        return ptr;
+
+    void *new_ptr = my_malloc(bytes);
+    if (!new_ptr) return NULL;
+    memcpy(new_ptr, ptr, block->size);
+    my_free(ptr);
+    return new_ptr;
 }
 
 static void
@@ -153,6 +200,8 @@ coalesce(block_t **block)
 
     leftmost->size = size;
     leftmost->next = rightmost->next;
+    if (rightmost->next)
+        rightmost->next->prev = leftmost;
     // printf("coalesce->size: %lu\n", size);
     // void *ptr = (void *)leftmost + sizeof(block_t);
     // memset(ptr, 0xDE, size);
@@ -172,7 +221,7 @@ my_free(void *ptr)
     temp->free = 1;
     coalesce(&temp);
     // printf("inside free(): size: %lu\n", temp->size);
-    ptr = (void *)temp + sizeof(block_t);
+    ptr = (char *)temp + sizeof(block_t);
     memset(ptr, 0xDE, temp->size);
     printf("inside free(): size: %lu\n", temp->size);
 }
@@ -183,7 +232,7 @@ heap_print()
     block_t *current = heap_start;
     while (current)
     {
-        sleep(1);
+        // sleep(1);
         char *free = current->free ? "YES" : "NO";
         printf("block { size: %lu, free: %s }\n", 
                 current->size, free);

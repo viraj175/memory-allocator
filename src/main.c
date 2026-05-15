@@ -26,7 +26,10 @@ main()
 
     printf("struct size: %lu\n", sizeof(struct names));
     struct names *characters = my_malloc(sizeof(struct names) * 2);  
-    int *nums = my_malloc(sizeof(int) * 8);
+    int *nums = my_calloc(sizeof(int), 8);
+    nums = my_realloc(nums, sizeof(int) * 20);
+    my_free(characters);
+    my_free(nums);
 
     heap_print();
     return 0;
