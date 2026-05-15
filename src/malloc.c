@@ -20,6 +20,7 @@ static block_t
         fprintf(stderr, "0 bytes requested!");
         return NULL;
     }
+    printf("size: %lu\n", size);
 
     block_t *block = sbrk(0);
     void *request = sbrk(size);
@@ -37,7 +38,7 @@ static block_t
 *find_free(block_t **last, size_t size)
 {
     block_t *current = heap_start;
-    printf("we are inside find_free()\n");
+    // printf("we are inside find_free()\n");
     while (current != NULL)
     {
         if(current->free && current->size >= size)
@@ -79,11 +80,13 @@ void
         return NULL;
     }
 
+    bytes = align_size(bytes);
+
     block_t *last = heap_start;
     block_t *block = find_free(&last, bytes);
     if (!block)
     {
-        printf("we are inside (!block) from my_malloc()\n");
+        // printf("we are inside (!block) from my_malloc()\n");
         block = request_memory(sizeof(block_t) + bytes);
         if (!block) return NULL;
         block->size = bytes;
@@ -103,7 +106,7 @@ void
         split_block(block, bytes);
     }
     
-    printf("returned from my_malloc()\n");
+    // printf("returned from my_malloc()\n");
     return (void *)((char *)block + sizeof(block_t));
 }
 
@@ -117,4 +120,66 @@ void
 *my_realloc(void *ptr, size_t bytes)
 {
     return NULL;
+}
+
+static void
+coalesce(block_t **block)
+{
+    block_t *leftmost = *block;
+    block_t *rightmost = *block;
+
+    size_t size = (*block)->size;
+    // size_t old_size = (*block)->size;
+    while (leftmost->prev && leftmost->prev->free) 
+    {
+        leftmost = leftmost->prev;
+        size += leftmost->size + sizeof(block_t);
+        // printf("coalesce->size: %lu\n", size);
+    }
+    while (rightmost->next && rightmost->next->free) 
+    {
+        rightmost = rightmost->next;
+        size += rightmost->size + sizeof(block_t);
+        // printf("coalesce->size: %lu\n", size);
+    }
+
+    if (leftmost == *block && rightmost == *block) return;
+
+    leftmost->size = size;
+    leftmost->next = rightmost->next;
+    // printf("coalesce->size: %lu\n", size);
+    // void *ptr = (void *)leftmost + sizeof(block_t);
+    // memset(ptr, 0xDE, size);
+    *block = leftmost;
+}
+
+void
+my_free(void *ptr)
+{
+    if(!ptr)
+    {
+        fprintf(stderr, "invalid ptr!\n");
+        return;
+    }
+
+    block_t *temp = (block_t *)((char *)ptr - sizeof(block_t));
+    temp->free = 1;
+    coalesce(&temp);
+    // printf("inside free(): size: %lu\n", temp->size);
+    ptr = (void *)temp + sizeof(block_t);
+    memset(ptr, 0xDE, temp->size);
+    printf("inside free(): size: %lu\n", temp->size);
+}
+
+void
+heap_print()
+{
+    block_t *current = heap_start;
+    while (current)
+    {
+        char *free = current->free ? "YES" : "NO";
+        printf("block { size: %lu, free: %s }\n", 
+                current->size, free);
+        current = current->next;
+    }
 }
