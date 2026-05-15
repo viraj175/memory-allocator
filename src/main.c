@@ -2,6 +2,11 @@
 #include <stdio.h>
 #include <string.h>
 
+struct names {
+    char name[10];
+    size_t length;
+};
+
 int
 main()
 {
@@ -18,7 +23,11 @@ main()
     printf("name: %s\n", name);
     my_free(array);
     my_free(name);
-    printf("name: %s\n", name);
+
+    printf("struct size: %lu\n", sizeof(struct names));
+    struct names *characters = my_malloc(sizeof(struct names) * 2);  
+    int *nums = my_malloc(sizeof(int) * 8);
+
     heap_print();
     return 0;
 }

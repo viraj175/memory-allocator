@@ -22,7 +22,7 @@ static block_t
     }
     printf("size: %lu\n", size);
 
-    block_t *block = sbrk(0);
+    sbrk(0);
     void *request = sbrk(size);
 
     if (request == (void *)-1)
@@ -41,34 +41,40 @@ static block_t
     // printf("we are inside find_free()\n");
     while (current != NULL)
     {
-        if(current->free && current->size >= size)
+        if(current->free && current->size >= size + sizeof(block_t) + MIN_RESERVED_BLOCK_SPACE)
             return current;
         *last = current;
         current = current->next;
     }
 
+    // couldn't find
     return NULL;
 }
 
-static void
+static int
 split_block(block_t *block, size_t size)
 {
-    if (block->size > size + sizeof(block_t) + MIN_RESERVED_BLOCK_SPACE)
-    {
-        fprintf(stderr, "can't split block, not enough space left!\n");
-        return;
-    }
-
+    // if (block->size < size + sizeof(block_t) + MIN_RESERVED_BLOCK_SPACE)
+    // {
+    //     fprintf(stderr, "can't split block, not enough space left!\n");
+    //     return -1;
+    // }
+    //
     block_t *next_block = block->next;
-    block_t *new_next_block = (void *)block + sizeof(block_t) + block->size;
+    block_t *new_next_block = (block_t *)((char *)block + sizeof(block_t) + size);
     new_next_block->size = block->size - size - sizeof(block_t);
-    block->free = 0;
+    printf("new_size: %lu = %lu - %lu - %lu\n", new_next_block->size, block->size, size, sizeof(block_t));
+    // block->free = 0;
     block->size = size;
     
     block->next = new_next_block;
     new_next_block->prev = block;
+    if(next_block)
+        next_block->prev = new_next_block;
     new_next_block->next = next_block;
-    next_block->prev = new_next_block;
+    new_next_block->free = 1;
+        
+    return 0;
 }
 
 void
@@ -177,6 +183,7 @@ heap_print()
     block_t *current = heap_start;
     while (current)
     {
+        sleep(1);
         char *free = current->free ? "YES" : "NO";
         printf("block { size: %lu, free: %s }\n", 
                 current->size, free);
