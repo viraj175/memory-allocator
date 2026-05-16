@@ -23,7 +23,6 @@ static block_t
     }
     printf("size: %lu\n", size);
 
-    // sbrk(0);
     void *request = sbrk(size);
 
     if (request == (void *)-1)
@@ -39,23 +38,20 @@ static block_t
 *find_free(block_t **last, size_t size)
 {
     block_t *current = heap_start;
-    // printf("we are inside find_free()\n");
     while (current != NULL)
     {
-        if(current->free && current->size >= size + MIN_RESERVED_BLOCK_SPACE)
+        if(current->free && current->size >= size)
             return current;
         *last = current;
         current = current->next;
     }
 
-    // couldn't find
     return NULL;
 }
 
 static int
 split_block(block_t *block, size_t size)
 {
-    printf("block->size: %lu = %lu + %lu\n", block->size, size, MIN_RESERVED_BLOCK_SPACE);
     if (block->size < size + MIN_RESERVED_BLOCK_SPACE)
     {
         fprintf(stderr, "can't split block, not enough space left!\n");
@@ -65,8 +61,8 @@ split_block(block_t *block, size_t size)
     block_t *next_block = block->next;
     block_t *new_next_block = (block_t *)((char *)block + sizeof(block_t) + size);
     new_next_block->size = block->size - size - sizeof(block_t);
-    printf("new_size: %lu = %lu - %lu - %lu\n", new_next_block->size, block->size, size, sizeof(block_t));
-    // block->free = 0;
+    printf("new_size: %lu = %lu - %lu - %lu\n", 
+            new_next_block->size, block->size, size, sizeof(block_t));
     block->size = size;
     
     block->next = new_next_block;
@@ -94,7 +90,6 @@ void
     block_t *block = find_free(&last, bytes);
     if (!block)
     {
-        // printf("we are inside (!block) from my_malloc()\n");
         block = request_memory(sizeof(block_t) + bytes);
         if (!block) return NULL;
         block->size = bytes;
@@ -106,7 +101,10 @@ void
             last->next = block;
 
         if (!heap_start)
+        {
             heap_start = block;
+            block->prev = NULL;
+        }
     }
     else 
     {
@@ -114,7 +112,6 @@ void
         split_block(block, bytes);
     }
     
-    // printf("returned from my_malloc()\n");
     return (void *)((char *)block + sizeof(block_t));
 }
 
@@ -160,13 +157,24 @@ void
 
     if (block->size > MIN_RESERVED_BLOCK_SPACE && bytes < block->size - MIN_RESERVED_BLOCK_SPACE)
     {
-        printf("bytes: %lu = %lu - %lu\n", bytes, block->size, MIN_RESERVED_BLOCK_SPACE);
         split_block(block, bytes);
         return ptr;
     }
-    
+
     if (bytes < block->size)
         return ptr;
+
+    if (block->next && block->next->free &&
+        block->size + sizeof(block_t) + block->next->size >= bytes)
+    {
+        block->size += sizeof(block_t) + block->next->size;
+        block->next = block->next->next;
+        if (block->next)
+            block->next->prev = block;
+        if (block->size > MIN_RESERVED_BLOCK_SPACE && bytes < block->size - MIN_RESERVED_BLOCK_SPACE)
+            split_block(block, bytes);
+        return ptr;
+    }
 
     void *new_ptr = my_malloc(bytes);
     if (!new_ptr) return NULL;
@@ -182,18 +190,15 @@ coalesce(block_t **block)
     block_t *rightmost = *block;
 
     size_t size = (*block)->size;
-    // size_t old_size = (*block)->size;
     while (leftmost->prev && leftmost->prev->free) 
     {
         leftmost = leftmost->prev;
         size += leftmost->size + sizeof(block_t);
-        // printf("coalesce->size: %lu\n", size);
     }
     while (rightmost->next && rightmost->next->free) 
     {
         rightmost = rightmost->next;
         size += rightmost->size + sizeof(block_t);
-        // printf("coalesce->size: %lu\n", size);
     }
 
     if (leftmost == *block && rightmost == *block) return;
@@ -202,9 +207,7 @@ coalesce(block_t **block)
     leftmost->next = rightmost->next;
     if (rightmost->next)
         rightmost->next->prev = leftmost;
-    // printf("coalesce->size: %lu\n", size);
-    // void *ptr = (void *)leftmost + sizeof(block_t);
-    // memset(ptr, 0xDE, size);
+
     *block = leftmost;
 }
 
@@ -220,10 +223,9 @@ my_free(void *ptr)
     block_t *temp = (block_t *)((char *)ptr - sizeof(block_t));
     temp->free = 1;
     coalesce(&temp);
-    // printf("inside free(): size: %lu\n", temp->size);
+
     ptr = (char *)temp + sizeof(block_t);
     memset(ptr, 0xDE, temp->size);
-    printf("inside free(): size: %lu\n", temp->size);
 }
 
 void
